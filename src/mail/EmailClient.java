@@ -10,10 +10,13 @@ package mail;
 import java.awt.*;
 import java.awt.event.*;
 import java.util.*;
+
 import javax.mail.*;
 import javax.mail.internet.*;
 import javax.swing.*;
 import javax.swing.event.*;
+
+import otherClient.Encryption;
 
 //The E-mail Client.
 public class EmailClient extends JFrame {
@@ -225,7 +228,7 @@ public class EmailClient extends JFrame {
            newMessage.setSubject(dialog.getSubject());
            newMessage.setSentDate(new Date());
            newMessage.setText(dialog.getContent());
-           newMessage = Encryption.toEncrypt(newMessage, session);
+           newMessage = Encryption.toEncrypt(dialog.getSubject(),dialog.getContent(),new InternetAddress(dialog.getFrom()),new InternetAddress(dialog.getTo()), session);
            // Send new message.
            Transport.send(newMessage);
        } catch (Exception e) {
@@ -298,14 +301,32 @@ public class EmailClient extends JFrame {
        Store store = null;
        try {
            // Initialize JavaMail session with SMTP server.
-           Properties props = new Properties();
-           props.put("mail.smtp.host", dialog.getSmtpServer());
+    	   Properties props = new Properties();
+   		// Properties props=System.getProperties();
+   		props.put("mail.smtp.user", dialog.getUsername());
+   		props.put("mail.smtp.host", dialog.getSmtpServer());
+   		if (!"".equals("465"))
+   			props.put("mail.smtp.port", "465");
+   		if (!"".equals("true"))
+   			props.put("mail.smtp.starttls.enable", "true");
+   		props.put("mail.smtp.auth", "true");
+   		if (true) {
+   			props.put("mail.smtp.debug", "true");
+   		} else {
+   			props.put("mail.smtp.debug", "false");
+   		}
+   		if (!"".equals("465"))
+   			props.put("mail.smtp.socketFactory.port", "465");
+   		if (!"".equals("javax.net.ssl.SSLSocketFactory"))
+   			props.put("mail.smtp.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
+   		if (!"".equals("false"))
+   			props.put("mail.smtp.socketFactory.fallback", "false");
            session = Session.getDefaultInstance(props, null);
            
            // Connect to e-mail server.
            URLName urln = new URLName(connectionUrl.toString());
            store = session.getStore(urln);
-           store.connect();
+           store.connect(dialog.getSmtpServer(), dialog.getUsername(), dialog.getPassword());
        } catch (Exception e) {
            // Close the downloading dialog.
            downloadingDialog.dispose();

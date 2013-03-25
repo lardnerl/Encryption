@@ -1,21 +1,17 @@
 /**
  * 
  */
-package otherClient;
+package mail;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
+import java.security.InvalidAlgorithmParameterException;
 import java.security.KeyStore;
-import java.security.NoSuchAlgorithmException;
+import java.security.KeyStoreException;
 import java.security.PrivateKey;
-import java.security.PublicKey;
 import java.security.Security;
 import java.security.cert.Certificate;
-import java.security.cert.CertificateException;
-import java.security.cert.CertificateFactory;
 import java.security.cert.PKIXParameters;
 import java.security.cert.X509Certificate;
 
@@ -30,7 +26,6 @@ import javax.mail.Message;
 import javax.mail.Multipart;
 import javax.mail.Part;
 import javax.mail.Session;
-import javax.mail.Transport;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
@@ -39,16 +34,13 @@ import javax.mail.internet.MimeMultipart;
 import org.bouncycastle.asn1.ASN1EncodableVector;
 import org.bouncycastle.asn1.cms.AttributeTable;
 import org.bouncycastle.asn1.cms.IssuerAndSerialNumber;
-import org.bouncycastle.asn1.pkcs.SignedData;
 import org.bouncycastle.asn1.smime.SMIMECapabilitiesAttribute;
 import org.bouncycastle.asn1.smime.SMIMECapability;
 import org.bouncycastle.asn1.smime.SMIMECapabilityVector;
 import org.bouncycastle.asn1.smime.SMIMEEncryptionKeyPreferenceAttribute;
 import org.bouncycastle.asn1.x500.X500Name;
-import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.jcajce.JcaCertStore;
 import org.bouncycastle.cms.CMSAlgorithm;
-import org.bouncycastle.cms.CMSSignedData;
 import org.bouncycastle.cms.RecipientId;
 import org.bouncycastle.cms.RecipientInformation;
 import org.bouncycastle.cms.RecipientInformationStore;
@@ -64,11 +56,7 @@ import org.bouncycastle.mail.smime.SMIMEException;
 import org.bouncycastle.mail.smime.SMIMESignedGenerator;
 import org.bouncycastle.mail.smime.SMIMEUtil;
 import org.bouncycastle.mail.smime.validator.SignedMailValidator;
-import org.bouncycastle.operator.ContentVerifierProvider;
-import org.bouncycastle.operator.DefaultDigestAlgorithmIdentifierFinder;
-import org.bouncycastle.operator.OperatorCreationException;
-import org.bouncycastle.operator.bc.BcRSAContentVerifierProviderBuilder;
-import org.bouncycastle.operator.jcajce.JcaContentVerifierProviderBuilder;
+import org.bouncycastle.mail.smime.validator.SignedMailValidatorException;
 import org.bouncycastle.util.Store;
 import org.bouncycastle.util.Strings;
 
@@ -79,9 +67,13 @@ import org.bouncycastle.util.Strings;
 public class Encryption {
 
 	public static MimeMessage toEncrypt(String subject, String contents,
-			InternetAddress from, InternetAddress to, Session session) {
+			String fromString, String toString, Session session) {
 
 		try {
+			InternetAddress from = new InternetAddress(fromString);
+			InternetAddress to = new InternetAddress(toString);
+
+			/* Update headers */
 			MailcapCommandMap mailcap = (MailcapCommandMap) CommandMap
 					.getDefaultCommandMap();
 
@@ -99,19 +91,15 @@ public class Encryption {
 			/* Open the keystore */
 			KeyStore keystore = KeyStore.getInstance(KeyStore.getDefaultType());
 			keystore.load(new FileInputStream("keystore.ImportKey"),
-					"importkey".toCharArray()); // /KEYSTORE
-			// AND
-			// PASSWORD
-			Certificate[] chain = keystore.getCertificateChain("importkey"); // WHO
-																				// IN
-																				// KEYSTORE
-
+					"pass".toCharArray());
+			Certificate[] chain = keystore.getCertificateChain(fromString);
+			Certificate[] chainEncr = keystore.getCertificateChain(toString);
 			/* Get the private key to sign the message with */
-			PrivateKey privateKey = (PrivateKey) keystore.getKey("importkey",
-					"importkey".toCharArray());
+			PrivateKey privateKey = (PrivateKey) keystore.getKey(fromString,
+					"pass".toCharArray());
 			if (privateKey == null) {
 				throw new Exception("cannot find private key for alias: "
-						+ "importkey");
+						+ fromString);
 			}
 
 			/* Create the message to sign and encrypt */
@@ -146,7 +134,7 @@ public class Encryption {
 							(X509Certificate) chain[0]));
 
 			/* Add the list of certs to the generator */
-			List certList = new ArrayList();
+			List<Certificate> certList = new ArrayList<Certificate>();
 			certList.add(chain[0]);
 			Store certs = new JcaCertStore(certList);
 			signer.addCertificates(certs);
@@ -156,7 +144,7 @@ public class Encryption {
 			MimeMessage signedMessage = new MimeMessage(session);
 
 			/* Set all original MIME headers in the signed message */
-			Enumeration headers = body.getAllHeaderLines();
+			Enumeration<?> headers = body.getAllHeaderLines();
 			while (headers.hasMoreElements()) {
 				signedMessage.addHeaderLine((String) headers.nextElement());
 			}
@@ -169,9 +157,7 @@ public class Encryption {
 			SMIMEEnvelopedGenerator encrypter = new SMIMEEnvelopedGenerator();
 			encrypter
 					.addRecipientInfoGenerator(new JceKeyTransRecipientInfoGenerator(
-							(X509Certificate) chain[0]).setProvider("BC"));
-
-			System.out.println(signedMessage.getContent());
+							(X509Certificate) chainEncr[0]).setProvider("BC"));
 
 			/* Encrypt the message */
 			MimeBodyPart encryptedPart = encrypter.generate(signedMessage,
@@ -211,31 +197,32 @@ public class Encryption {
 		return null;
 	}
 
-	public static String toDecrypt(MimeMessage encryptedMessage, Session session)
+	public static String toDecrypt(Message toDecrypt, Session session)
 			throws Exception {
 		Security.addProvider(new BouncyCastleProvider());
+		MimeMessage encryptedMessage = (MimeMessage) toDecrypt;
+
+		String toString = encryptedMessage
+				.getRecipients(Message.RecipientType.TO)[0].toString();
+		String fromString = encryptedMessage.getFrom().toString();
 
 		/* Open the keystore */
 		KeyStore keystore = KeyStore.getInstance(KeyStore.getDefaultType());
 		keystore.load(new FileInputStream("keystore.ImportKey"),
-				"importkey".toCharArray()); // /KEYSTORE
-		// AND
-		// PASSWORD
-		Certificate[] chain = keystore.getCertificateChain("importkey"); // WHO
-																			// IN
-																			// KEYSTORE
+				"pass".toCharArray()); // /KEYSTORE
+		keystore.getCertificateChain(fromString);
 
-		/* Get the private key to sign the message with */
-		PrivateKey privateKey = (PrivateKey) keystore.getKey("importkey",
-				"importkey".toCharArray());
+		/* Get the private key to decrypt the message with */
+		PrivateKey privateKey = (PrivateKey) keystore.getKey(toString,
+				"pass".toCharArray());
 		if (privateKey == null) {
 			throw new Exception("cannot find private key for alias: "
-					+ "importkey");
+					+ toString);
 		}
 
 		X509Certificate cert = (X509Certificate) keystore
-				.getCertificate("importkey");
-		PublicKey publicKey = cert.getPublicKey();
+				.getCertificate(toString);
+		cert.getPublicKey();
 
 		RecipientId recId = new JceKeyTransRecipientId(cert);
 
@@ -247,41 +234,57 @@ public class Encryption {
 		MimeBodyPart res = SMIMEUtil.toMimeBodyPart(recipient
 				.getContent(new JceKeyTransEnvelopedRecipient(privateKey)));
 
-		System.out.println("Message Contents");
-		System.out.println("----------------");
-		System.out.println(res.getContent());
-		System.out.println(res.getContentType());
-		
-		MimeMessage signedPart = new MimeMessage(session);
-		signedPart.setContent((Multipart) res.getContent());
-		boolean signature = verifySignature(signedPart, keystore);
-		MimeMultipart decryptedMessage = (MimeMultipart) res.getContent();
-		
-		StringBuffer messageContent = new StringBuffer();
-		Multipart multipart = (Multipart) decryptedMessage;
-		for (int i = 0; i < multipart.getCount(); i++) {
-			Part part = (Part) multipart.getBodyPart(i);
-			System.out.println(part.getContentType());
-			if (part.isMimeType("text/plain")) {
-				messageContent.append(part.getContent().toString());
-			}
-		}
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		res.writeTo(out);
 
-		if(signature)
-			return messageContent.toString();
+		MimeMessage decryptedMessage = new MimeMessage(session,
+				new ByteArrayInputStream(out.toByteArray()));
+
+		boolean signature = verifySignature(decryptedMessage, keystore);
+
+		if (signature)
+			return getMessageContent(decryptedMessage);
 		else
-			return "Signature Unverfied :: " + messageContent.toString();
+			return "Signature Unverfied :: "
+					+ getMessageContent(decryptedMessage);
 	}
 
-	
-	private static boolean verifySignature(MimeMessage message, KeyStore keyStore)
-			throws Exception {
-		
-		System.out.print(message.getContentType());
-		PKIXParameters pkixp = new PKIXParameters(keyStore);
-		SignedMailValidator validator = new SignedMailValidator( message, pkixp);
-		return false;
+	private static boolean verifySignature(MimeMessage message,
+			KeyStore keyStore) {
+		try {
 
+			PKIXParameters pkixp = new PKIXParameters(keyStore);
+
+			new SignedMailValidator(message, pkixp);
+		} catch (SignedMailValidatorException e) {
+			return false;
+		} catch (KeyStoreException e) {
+			e.printStackTrace();
+			return false;
+		} catch (InvalidAlgorithmParameterException e) {
+			e.printStackTrace();
+			return false;
+		}
+		return true;
+
+	}
+
+	// Get a message's content.
+	public static String getMessageContent(Message message) throws Exception {
+		Object content = message.getContent();
+		if (content instanceof Multipart) {
+			StringBuffer messageContent = new StringBuffer();
+			Multipart multipart = (Multipart) content;
+			for (int i = 0; i < multipart.getCount(); i++) {
+				Part part = (Part) multipart.getBodyPart(i);
+				if (part.isMimeType("text/plain")) {
+					messageContent.append(part.getContent().toString());
+				}
+			}
+			return messageContent.toString();
+		} else {
+			return content.toString();
+		}
 	}
 
 	public static void main(String[] args) throws Exception {
@@ -290,13 +293,11 @@ public class Encryption {
 		Properties props = System.getProperties();
 		Session session = Session.getDefaultInstance(props, null);
 
-		InternetAddress fromUser = new InternetAddress("hughlardner@gmail.com");
-		InternetAddress toUser = new InternetAddress("hughlardner@gmail.com");
-
 		MimeMessage newMessage = new MimeMessage(session);
 
 		newMessage = Encryption.toEncrypt("example signed message",
-				"Test message", fromUser, toUser, session);
+				"Test message", "hughlardner@gmail.com",
+				"hughlardner@gmail.com", session);
 
 		//
 

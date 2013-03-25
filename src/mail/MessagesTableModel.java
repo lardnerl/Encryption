@@ -71,7 +71,7 @@ public class MessagesTableModel extends AbstractTableModel {
            switch (col) {
                case 0: // Sender
                    Address[] senders = message.getFrom();
-                   if (senders != null || senders.length > 0) {
+                   if (senders != null && senders.length > 0) {
                        return senders[0].toString();
                    } else {
                        return "[none]";

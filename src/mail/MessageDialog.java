@@ -50,7 +50,7 @@ public class MessageDialog extends JDialog {
                
                // Get message "to" value
                Address[] senders = message.getFrom();
-               if (senders != null || senders.length > 0) {
+               if (senders != null && senders.length > 0) {
                    to = senders[0].toString();
                }
                to = message.getFrom()[0].toString();

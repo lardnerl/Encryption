@@ -73,7 +73,7 @@ public class Encryption {
 			InternetAddress from = new InternetAddress(fromString);
 			InternetAddress to = new InternetAddress(toString);
 
-			/* Update headers */
+			/* Update possible mail information */
 			MailcapCommandMap mailcap = (MailcapCommandMap) CommandMap
 					.getDefaultCommandMap();
 
@@ -199,6 +199,7 @@ public class Encryption {
 
 	public static String toDecrypt(Message toDecrypt, Session session)
 			throws Exception {
+		/* Add BC */
 		Security.addProvider(new BouncyCastleProvider());
 		MimeMessage encryptedMessage = (MimeMessage) toDecrypt;
 
@@ -224,22 +225,23 @@ public class Encryption {
 				.getCertificate(toString);
 		cert.getPublicKey();
 
+		/* Generate decryption information*/
 		RecipientId recId = new JceKeyTransRecipientId(cert);
 
 		SMIMEEnveloped m = new SMIMEEnveloped(encryptedMessage);
 
 		RecipientInformationStore recipients = m.getRecipientInfos();
 		RecipientInformation recipient = recipients.get(recId);
-
+		/* Decrypt message*/
 		MimeBodyPart res = SMIMEUtil.toMimeBodyPart(recipient
 				.getContent(new JceKeyTransEnvelopedRecipient(privateKey)));
-
+		/* produce decrypted message*/
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		res.writeTo(out);
 
 		MimeMessage decryptedMessage = new MimeMessage(session,
 				new ByteArrayInputStream(out.toByteArray()));
-
+		/* Verify signature*/
 		boolean signature = verifySignature(decryptedMessage, keystore);
 
 		if (signature)
@@ -252,9 +254,9 @@ public class Encryption {
 	private static boolean verifySignature(MimeMessage message,
 			KeyStore keyStore) {
 		try {
-
+			/* Produce parameters for verfiying signature*/
 			PKIXParameters pkixp = new PKIXParameters(keyStore);
-
+			/*Verfiy signatrure*/
 			new SignedMailValidator(message, pkixp);
 		} catch (SignedMailValidatorException e) {
 			return false;
@@ -287,6 +289,8 @@ public class Encryption {
 		}
 	}
 
+	
+	/* For testing Encryption/decryption*/
 	public static void main(String[] args) throws Exception {
 		// send(String smtpHost, int smtpPort, String fromAddress, String
 		// toAddress, String subject, String content, String passwd)

@@ -90,14 +90,7 @@ public class EmailClient extends JFrame {
 				actionNew();
 			}
 		});
-		buttonPanel.add(newButton);
-		JButton refreshButton = new JButton("Refresh Inbox");
-		refreshButton.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent e) {
-				actionRefresh();
-			}
-		});
-		buttonPanel.add(refreshButton);
+
 
 		// Setup messages table.
 		tableModel = new MessagesTableModel();
@@ -230,6 +223,7 @@ public class EmailClient extends JFrame {
 		try {
 			// Create a new message with values from dialog.
 			Message newMessage = new MimeMessage(session);
+			/*Encrypt and sign message*/
 			newMessage = Encryption.toEncrypt(dialog.getSubject(),
 					dialog.getContent(), dialog.getFrom(), dialog.getTo(),
 					session);
@@ -248,6 +242,7 @@ public class EmailClient extends JFrame {
 		// Show hour glass cursor while message is loaded.
 		setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
 		try {
+			/* if message content is of type encrypted, decrypt, verify signature and show. Else just show*/
 			if (selectedMessage.getContentType().contains(
 					"APPLICATION/PKCS7-MIME;"))
 				messageTextArea.setText(Encryption.toDecrypt(selectedMessage,
@@ -307,7 +302,7 @@ public class EmailClient extends JFrame {
 			}
 		});
 
-		// Establish JavaMail session and connect to server.
+		// Establish JavaMail session and connect to server. - Modified to only allow connection to gmail server
 		Store store = null;
 
 		userName = dialog.getUsername();

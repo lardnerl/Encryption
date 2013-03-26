@@ -176,8 +176,8 @@ public class ConnectDialog extends JDialog {
        System.exit(0);
    }
    
-   // Get e-mail server type.
-   public String getType() {
+  // Get e-mail server type.
+  public String getType() {
        return (String) typeComboBox.getSelectedItem();
    }
    
